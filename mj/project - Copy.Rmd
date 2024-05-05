@@ -1,0 +1,406 @@
+ 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(broom)
+library(car)
+library(ggplot2)
+library(lmtest)
+library(glmnet)
+library(ggplot2)
+library(caret)
+library(boot)
+library(haven)
+```
+
+
+```{r}
+w6 <- read_dta("w6.dta")
+cat("dimensions of the data frame:",dim(w6))
+
+```
+
+
+
+```{r}
+head(w6)
+```
+
+
+```{r}
+  
+ 
+relations <-  c("cp6ylpcg", "cp6mrelf",   "p6e1", "cp6hhsize", "p6d24", "p6d25", "k6c6a", "k6c6b", "k6c7c", "p6d28", "p6d29", "k6c9c", "k6c9d", "p6d31", "k6d36b", "p6d32", "p6d33", "p6d34", "p6d35", "p6d36", "p6d37", "p6d39", "p6e38", "p6e39", "p6f1", "p6f2", "p6f11", "p6f22", "k6c10", "k6c21", "k6c17", "k6c28", "k6c33", "k6c37", "p6f32", "p6f35", "p6g9", "p6g11", "p6g17", "p6g23", "k6c00aa", "k6c00ab", "k6c00ac", "k6c00ad", "k6c00ak", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c9f", "k6c46", "k6c47", "k6d35b", "k6d46", "k6d57", "k6d59", "k6f1a", "k6f1b" , "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "p6d21a", "k6b1a", "k6b29", "k6b30", "k6d1b", "k6d1d", "k6d1e", "k6d1f", "k6d1i", "k6d1j", "k6d1k", "k6d2g", "k6d2l", "k6d2y", "k6d36d", "k6d62a", "k6d62b", "k6d62c", "k6d62g", "k6d64", "k6f4", "k6f14" , "p6b51" , "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e10", "k6e12", "k6e18", "k6e36" , "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44", "k6d48", "k6d55", "k6f63", "p6h75", "p6h76", "p6h79", "p6h87a" ,"p6i3", "p6i4", "p6i5", "p6i7", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6j11" )
+
+social <- w6[relations]
+social <- social[!duplicated(names(social)) | !names(social) %in% relations]
+
+cat("dimensions of the social related data:",dim(social))
+```
+ 
+```{r}
+  social <- subset(social, !apply(social, 1, function(x) any(x ==-9 | x==-7)))
+  cat("dimensions of the filtered social related data:",dim(social))
+```
+
+```{r}
+dmy <- dummyVars(" ~ .", data = social)
+social <- data.frame(predict(dmy, newdata = social))
+
+
+```
+
+
+
+```{r}
+social$p6i3
+```
+
+```{r}
+
+cor(social[c("p6i3", "p6i4", "p6i5", "p6i7")])
+
+```
+
+3~4~5 -> 4
+```{r}
+ 
+
+cor(social[c("k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14")])
+
+```
+ 
+```{r}
+head(social$k6d40)
+```
+```{r}
+social$k6d40
+summary(social$k6d40)
+summary(social$k6d42)
+```
+```{r}
+
+social$cig_num <- ifelse(social$k6d40 == 2, 0, ifelse(social$k6d40 == 1, social$k6d42, social$k6d40))
+summary(social$cig_num)
+social$cig_num
+
+```
+
+
+
+```{r}
+head(social$k6e10)
+```
+```{r}
+summary(social$k6e12)
+```
+ 
+```{r}
+social$police_stop_num <- ifelse(social$k6e10 == 2, 0, ifelse(social$k6e10 == 1, social$k6e12, social$k6e10))
+summary(social$police_stop_num)
+```
+```{r}
+social$suspend_num <- ifelse(social$k6b29 == 2, 0, ifelse(social$k6b29 == 1, social$k6b30, social$k6b29))
+summary(social$suspend_num)
+```
+
+
+ 
+ p6f2 , p6f22 , k6c21 -> p6f22
+```{r}
+#A1
+library(caret)
+A1_vars <- c("k6f63", "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44", "k6d48", "k6d55", "p6h75", "p6h76",   "p6h87a", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b49", "p6d21a", "k6b1a", "k6d1f", "k6d1j", "k6d2g", "k6d2l", "k6d2y", "k6d62a", "k6d62c", "k6d64", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d25", "k6c6a", "k6c6b", "p6d39", "p6f32", "p6g9", "k6c4b", "k6c4e", "k6c46", "k6c47", "k6d46", "k6d57", "k6d59")
+A1  <- social[,unique(A1_vars)]
+```
+ 
+ 
+
+ 
+```{r}
+A1$ethinity <- ifelse(social$k6c00aa == 1, "White  ", 
+                        ifelse(social$k6c00ab == 1, " Black ", 
+                              ifelse(social$k6c00ak == 1, " Mixed" , "None")))
+``` 
+  
+```{r}
+
+summary(A1$k6f63)
+dim(A1)
+```
+
+```{r}
+neg_A1 <- which(A1$k6f63 < 0)
+A1  <- A1 [ - neg_A1,]
+
+summary(A1$k6f63)
+dim(A1)
+```
+```{r}
+neg_A1 <- which(A1$k6d62c < 0)
+A1  <- A1 [ - neg_A1,]
+
+summary(A1$k6d62c)
+dim(A1)
+```
+
+
+```{r}
+ 
+neg_A1 <- which(A1$k6d57 < 0)
+A1  <- A1 [ - neg_A1,]
+
+summary(A1$k6d57)
+dim(A1)
+ 
+```
+
+
+```{r}
+A1$k6f63 <- -1 * A1$k6f63 +2 
+summary(A1$k6f63)
+dim(A1)
+
+```
+ 
+```{r}
+A1$k6f63 <- as.factor(A1$k6f63)
+ 
+```
+
+ 
+ 
+ 
+ 
+```{r}
+library(lme4)
+A1_grouped <- glmer(k6f63 ~ k6d62c +k6d57  +( 0+k6d62c +k6d57 |ethinity)   , family = binomial(link = "logit"),data=A1    )
+coef(A1_grouped)
+```
+```{r}
+library(ggplot2)
+
+ 
+x1 <-  A1$k6d62c
+x2 <- A1$k6d57
+intercept <- 2.17221
+ 
+y1_black <- intercept -1.677183 * x1
+y1_white <- intercept -1.650633  * x1
+y1_mixed <- intercept -1.667876 * x1
+y1_none <- intercept -1.664815 * x1
+
+y2_black <- intercept + 0.2408085 * x2
+y2_white <- intercept + 0.1195067 * x2
+y2_mixed <- intercept + 0.1982864 * x2
+y2_none <- intercept + 0.1842980 * x2
+
+ 
+
+# Create data frames for plotting
+df1 <- data.frame(x = x1, y = c(y1_black,y1_white,y1_mixed ,y1_none ))
+df2 <- data.frame(x = x2, y = c(y1_black,y1_white,y1_mixed ,y1_none ))
+
+# Plot
+plot1 <- ggplot(df1, aes(x = x, y = y)) +
+  geom_line() +
+  labs(title = "Figure 1", x = "X", y = "Y (slope = 0.5)")
+
+plot2 <- ggplot(df2, aes(x = x, y = y)) +
+  geom_line() +
+  labs(title = "Figure 2", x = "X", y = "Y (slope = 0.8)")
+
+# Display plots side by side
+library(gridExtra)
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+```{r}
+x1 <-  A1$k6d62c
+x2 <- A1$k6d57
+intercept <- 2.17221
+slopes1 <- c(-1.677183,-1.667876,-1.664815,-1.650633)  # Slopes for plot 1
+slopes2 <- c(0.2408085,0.1982864, 0.1842980,0.1195067)   # Slopes for plot 2
+
+# Calculate y values for each line in both plots
+y_values_plot1 <- lapply(slopes1, function(slope) intercept + slope * x1)
+y_values_plot2 <- lapply(slopes2, function(slope) intercept + slope * x2)
+
+# Combine x and y values into data frames for each plot
+df_plot1 <- data.frame(x = rep(x1, length(slopes1)), 
+                       y = unlist(y_values_plot1),
+                       group = factor(rep(1:length(slopes1), each = length(x1))),
+                       plot = "Plot 1")  # Identifier for plot 1
+
+df_plot2 <- data.frame(x = rep(x2, length(slopes2)), 
+                       y = unlist(y_values_plot2),
+                       group = factor(rep(1:length(slopes2), each = length(x2))),
+                       plot = "Plot 2")  # Identifier for plot 2
+
+# Combine data frames for both plots
+group <- c("Black","White","Mixed","None") 
+
+# Plot for Plot 1
+plot1 <- ggplot(subset(df_plot1 ), aes(x = -1*x , y = y, group = group, color = group)) +
+  geom_line() +
+  labs(title = "Effect of Friends", x = "Friends tried marijuana", y = "Ever tried marijuana?",color = "Ethnicity") +
+  theme_minimal()+   scale_x_discrete(labels = c("3" = "Never", "2" = "Often", "1" = "Always"))+ 
+  scale_color_manual(values = c("1" = "blue", "2" = "red","3" = "green", "4" = "black"), 
+                     labels = c("1" = "Black", "2" = "White","3" = "Mixed", "4" = "None"))+
+  theme(legend.position = "none")
+
+# Plot for Plot 2
+plot2 <- ggplot(subset(df_plot2 ), aes(x = x , y = y, group = group, color = group)) +
+  geom_line() +
+  labs(title = "Effect of Family", x = "How often PCG drinks alcohol?", y = "Ever tried marijuana?",color = "Ethnicity") +
+  theme_minimal() + scale_x_discrete(labels = c("1" = "Never", "3" = "Often", "5" = "Always"))+ 
+  scale_color_manual(values = c("1" = "blue", "2" = "red","3" = "green", "4" = "black"), 
+                     labels = c("1" = "Black", "2" = "White","3" = "Mixed", "4" = "None"))
+
+# Display both plots side by side
+grid.arrange(plot1, plot2, ncol = 2)
+```
+ 
+ 
+ 
+```{r}
+B3_vars <- c("k6e36", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33",   "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B3 <- social[,unique(B3_vars)]
+```
+ 
+
+
+
+```{r}
+B3$ethinity <- ifelse(social$k6c00aa == 1, "White  ", 
+                        ifelse(social$k6c00ab == 1, " Black ", 
+                              ifelse(social$k6c00ak == 1, " Mixed" , "None")))
+dim(B3)
+```  
+  
+ 
+  
+```{r}
+summary(B3$k6e36 )
+dim(B3)
+```
+
+```{r}
+neg_B3 <- which(B3$k6e36 < 0)
+B3  <- B3[ - neg_B3,]
+summary(B3$k6e36)
+dim(B3)
+head(B3)
+```
+
+
+```{r}
+B3$k6e36 <- -1 * B3$k6e36 +2 
+summary(B3$k6e36)
+
+ 
+A2_nona <- B3
+dim(A2_nona)
+A2_nona[A2_nona < 0] <- NA
+ 
+dim(A2_nona)
+A2_nona <- A2_nona[,c("k6e36" , "p6d24"   , "ethinity" )]
+ 
+A2_nona$ethinity <- as.factor(A2_nona$ethinity)
+ 
+summary(A2_nona$ethinity) 
+ 
+        
+dim(A2_nona) 
+ 
+A2_nona <- na.omit(A2_nona)
+dim(A2_nona)
+```
+```{r}
+ 
+A2_nona$ethinity <- as.factor(A2_nona$ethinity)
+ 
+summary(A2_nona$ethinity)
+```
+
+  
+ 
+ 
+```{r}
+
+B3<- A2_nona
+
+B3$k6e36 <- as.factor(B3$k6e36)
+ 
+head(B3)
+summary(B3$ethinity)
+ 
+```
+ 
+ 
+ 
+ 
+ 
+
+
+```{r}
+ 
+B3_grouped <- glmer(k6e36 ~ p6d24   +(  1 |ethinity)   , family = binomial(link = "logit"),data=B3    )
+B3$al <- as.numeric(B3$k6e36)
+B3_grouped2 <- lmer(al ~ p6d24   +( p6d24  |ethinity)    ,data=B3    )
+ 
+coef(B3_grouped)
+coef(B3_grouped2)
+```
+
+```{r}
+ coef(B3_grouped2) 
+ 
+ 
+```
+
+
+
+```{r}
+B1_vars <- c("police_stop_num", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "k6e36", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",  "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B1 <- social[,unique(B1_vars)]
+```
+ 
+```{r}
+B1$ethinity <- ifelse(social$k6c00aa == 1, "White  ", 
+                        ifelse(social$k6c00ab == 1, " Black ", 
+                              ifelse(social$k6c00ak == 1, " Mixed" , "None")))
+```  
+ 
+```{r}
+summary(B1$police_stop_num)
+ 
+```
+
+```{r}
+neg_B1 <- which(B1$police_stop_num < 0)
+B1  <- B1[ - neg_B1,]
+summary(B1$police_stop_num)
+```
+
+ 
+ 
+```{r}
+B1$police_stop_num <- as.numeric(B1$police_stop_num)
+B1_model <-  lm(police_stop_num ~ ., data = B1 )
+B1_predictions <- predict(B1_model, newdata = B1 )
+dim(B1)
+```
+```{r}
+ 
+ 
+B1_grouped2 <- lmer(police_stop_num ~ p6i14   +( p6i14  |ethinity)    ,data=B1    )
+ 
+coef(B1_grouped2)
+```
+

@@ -1,0 +1,330 @@
+ 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(broom)
+library(car)
+library(ggplot2)
+library(lmtest)
+library(glmnet)
+library(ggplot2)
+library(caret)
+library(boot)
+library(haven)
+library(MASS)
+```
+
+
+```{r}
+w6 <- read_dta("w6.dta")
+cat("dimensions of the data frame:",dim(w6))
+
+```
+
+
+ 
+
+
+```{r}
+  
+ 
+relations <-  c("cp6ylpcg", "cp6mrelf",   "p6e1", "cp6hhsize", "p6d24", "p6d25", "k6c6a", "k6c6b", "k6c7c", "p6d28", "p6d29", "k6c9c", "k6c9d", "p6d31", "k6d36b", "p6d32", "p6d33", "p6d34", "p6d35", "p6d36", "p6d37", "p6d39", "p6e38", "p6e39", "p6f1", "p6f2", "p6f11", "p6f22", "k6c10", "k6c21", "k6c17", "k6c28", "k6c33", "k6c37", "p6f32", "p6f35", "p6g9", "p6g11", "p6g17", "p6g23", "k6c00aa", "k6c00ab", "k6c00ac", "k6c00ad", "k6c00ak", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c9f", "k6c46", "k6c47", "k6d35b", "k6d46", "k6d57", "k6d59", "k6f1a", "k6f1b" , "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "p6d21a", "k6b1a", "k6b29", "k6b30", "k6d1b", "k6d1d", "k6d1e", "k6d1f", "k6d1i", "k6d1j", "k6d1k", "k6d2g", "k6d2l", "k6d2y", "k6d36d", "k6d62a", "k6d62b", "k6d62c", "k6d62g", "k6d64", "k6f4", "k6f14" , "p6b51" , "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e10", "k6e12", "k6e18", "k6e36" , "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44", "k6d48", "k6d55", "k6f63", "p6h75", "p6h76", "p6h79", "p6h87a" ,"p6i3", "p6i4", "p6i5", "p6i7", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6j11" )
+
+social <- w6[relations]
+social <- social[!duplicated(names(social)) | !names(social) %in% relations]
+
+cat("dimensions of the social related data:",dim(social))
+```
+ 
+```{r}
+  social <- subset(social, !apply(social, 1, function(x) any(x ==-9 | x==-7)))
+  cat("dimensions of the filtered social related data:",dim(social))
+```
+
+```{r}
+dmy <- dummyVars(" ~ .", data = social)
+social <- data.frame(predict(dmy, newdata = social))
+
+
+```
+
+  
+```{r}
+
+social$cig_num <- ifelse(social$k6d40 == 2, 0, ifelse(social$k6d40 == 1, social$k6d42, social$k6d40))
+summary(social$cig_num)
+ 
+
+```
+
+ 
+ 
+```{r}
+social$police_stop_num <- ifelse(social$k6e10 == 2, 0, ifelse(social$k6e10 == 1, social$k6e12, social$k6e10))
+summary(social$police_stop_num)
+```
+```{r}
+social$suspend_num <- ifelse(social$k6b29 == 2, 0, ifelse(social$k6b29 == 1, social$k6b30, social$k6b29))
+summary(social$suspend_num)
+```
+ 
+"cp6mrelf", "cp6prelb", "cp6pmarb" -> cp6mrelf
+ 
+   
+ p6f2 , p6f22 , k6c21 -> p6f22
+ 
+ 
+```{r}
+C1_vars <- c("p6b51", "p6h102", "k6d61b", "k6d61c", "k6e7f", "p6b35", "p6b37", "p6b39", "p6b38", "p6b49", "k6d1b", "k6d1f", "k6d2l", "p6d37", "p6e38", "p6e39", "p6f1",   "p6f11", "p6f22", "k6c10",  "k6c17", "k6c28", "k6c33", "k6c37", "p6g11", "p6g17", "k6c4b", "k6c4e", "k6c46", "k6c47")
+C1 <- social[,unique(C1_vars)]
+
+```
+ 
+
+```{r}
+summary(C1$p6b51)
+B1 <-C1 
+```
+
+```{r}
+neg_B1 <- which(B1$p6b51 < 0)
+B1  <- B1[ - neg_B1,]
+summary(B1$p6b51)
+```
+```{r}
+dim(B1)
+```
+
+ 
+ 
+```{r}
+B1$p6b51 <- as.numeric(B1$p6b51)
+B1_model <-  lm(p6b51 ~ ., data = B1 )
+B1_predictions <- predict(B1_model, newdata = B1 )
+```
+ 
+```{r}
+set.seed(123)
+training_B1 <- B1$p6b51%>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B1  <- B1[training_B1, ]
+test.B1 <- B1[-training_B1, ]
+ 
+cv_B1 <- lm(      p6b51~ ., data = train.B1)
+ 
+predic_cv_B1 <- cv_B1  %>% predict(test.B1)
+
+kfold_B1 <- train(        p6b51~.,
+               data = B1,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B1 <- kfold_B1  %>% predict(B1)
+ 
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B1,  B1$p6b51), R2(predic_cv_B1, test.B1$p6b51),R2(B1_predictions , B1$p6b51)),
+            RMSE = c(RMSE(predic_kfold_B1, B1$p6b51), RMSE(predic_cv_B1, test.B1$p6b51),RMSE(B1_predictions , B1$p6b51)) )
+```  
+ 
+```{r}
+summary(kfold_B1)
+```
+
+
+```{r}
+Bres <- B1
+Bres$std_residuals <- rstandard(B1_model)
+p1_B1 <- ggplot(Bres, aes(x = std_residuals)) +
+  
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B1 <- ggplot(Bres, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B1, p2_B1, ncol = 2)
+```  
+  
+```{r}
+set.seed(123)
+training_B1_robust_model <- B1$p6b51 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B1_robust_model  <- B1[training_B1_robust_model, ]
+test.B1_robust_model <- B1[-training_B1_robust_model, ]
+cv_B1_robust_model <-rlm(p6b51 ~ ., data = train.B1_robust_model  , maxit=50  )
+predic_train  <- cv_B1_robust_model  %>% predict(train.B1_robust_model)
+ R2(predic_train , train.B1_robust_model$p6b51)
+predic_cv_B1_robust_model <- cv_B1_robust_model  %>% predict(test.B1_robust_model)
+ 
+R2(predic_cv_B1_robust_model , test.B1_robust_model$p6b51)
+
+```
+ 
+```{r}
+summary(cv_B1_robust_model)
+```
+  
+
+```{r}
+poverty <- as.data.frame(B1)
+X <- poverty[, -1]
+y <- poverty$p6b51
+cvfit <- cv.glmnet(as.matrix(X), y, family = "poisson", alpha=1)
+bestlam = cvfit$lambda.min
+fit_lasso <- glmnet(X, y, family = "poisson", lambda=bestlam, alpha=1)
+#predic_train  <- fit_lasso %>% predict(poverty)
+predictions <- predict(fit_lasso, newx = as.matrix(X), s =bestlam)
+
+ R2(predictions ,poverty$p6b51)
+``` 
+ 
+```{r}
+summary(fit_lasso)
+```
+  
+ 
+  
+```{r}
+C1_vars2 <- c("p6b51", "p6h102", "k6d61b", "k6d61c",   "p6b37",  "p6b38", "p6b49",  "k6d2l",   "p6e38", "p6e39", "p6f1",      "k6c17", "k6c28",   "p6g17",   "k6c4e", "k6c46" )
+C1_less <- social[,unique(C1_vars2)]
+
+```
+
+
+
+```{r}
+B1_less <- C1_less
+summary(B1_less $p6b51)
+ 
+```
+
+```{r}
+neg_B1 <- which(B1_less$p6b51 < 0)
+B1_less   <- B1_less[ - neg_B1,]
+summary(B1_less$p6b51)
+dim(B1_less)
+ 
+```
+ 
+```{r}
+B1_less_noneg <- B1_less
+B1_less_noneg[B1_less_noneg < 0] <- NA
+ 
+dim(B1_less_noneg)
+
+missing_prop <- colMeans(is.na(B1_less_noneg))
+ 
+vars_to_remove <- names(missing_prop[missing_prop > 0.1])
+ 
+B1_less_noneg <- B1_less_noneg[, !names(B1_less_noneg) %in% vars_to_remove]
+
+
+dim(B1_less_noneg)
+
+B1_less_noneg <- na.omit(B1_less_noneg)
+dim(B1_less_noneg)
+B1  <- B1_less_noneg
+ 
+```
+
+
+
+
+
+
+```{r}
+B1$p6b51 <- as.numeric(B1$p6b51)
+B1_model <-  lm(p6b51 ~ ., data = B1 )
+B1_predictions <- predict(B1_model, newdata = B1 )
+```
+ 
+```{r}
+set.seed(123)
+training_B1 <- B1$p6b51%>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B1  <- B1[training_B1, ]
+test.B1 <- B1[-training_B1, ]
+ 
+cv_B1 <- lm(      p6b51~ ., data = train.B1)
+ 
+predic_cv_B1 <- cv_B1  %>% predict(test.B1)
+
+kfold_B1 <- train(        p6b51~.,
+               data = B1,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B1 <- kfold_B1  %>% predict(B1)
+ 
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B1,  B1$p6b51), R2(predic_cv_B1, test.B1$p6b51),R2(B1_predictions , B1$p6b51)),
+            RMSE = c(RMSE(predic_kfold_B1, B1$p6b51), RMSE(predic_cv_B1, test.B1$p6b51),RMSE(B1_predictions , B1$p6b51)) )
+```  
+```{r}
+summary(kfold_B1)
+```
+ 
+
+```{r}
+set.seed(123)
+training_B1_robust_model <- B1$p6b51 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B1_robust_model  <- B1[training_B1_robust_model, ]
+test.B1_robust_model <- B1[-training_B1_robust_model, ]
+cv_B1_robust_model <-rlm(p6b51 ~ ., data = train.B1_robust_model  , maxit=50  )
+predic_train  <- cv_B1_robust_model  %>% predict(train.B1_robust_model)
+ R2(predic_train , train.B1_robust_model$p6b51)
+predic_cv_B1_robust_model <- cv_B1_robust_model  %>% predict(test.B1_robust_model)
+ 
+R2(predic_cv_B1_robust_model , test.B1_robust_model$p6b51)
+
+```
+
+
+```{r}
+summary(cv_B1_robust_model)
+```
+
+
+```{r}
+Bres <- B1
+Bres$std_residuals <- rstandard(B1_model)
+p1_B1 <- ggplot(Bres, aes(x = std_residuals)) +
+  
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B1 <- ggplot(Bres, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B1, p2_B1, ncol = 2)
+```
+
+
+
+```{r}
+poverty <- as.data.frame(B1)
+X <- poverty[, -1]
+y <- poverty$p6b51
+cvfit <- cv.glmnet(as.matrix(X), y, family = "poisson", alpha=1)
+bestlam = cvfit$lambda.min
+fit_lasso <- glmnet(X, y, family = "poisson", lambda=bestlam, alpha=1)
+#predic_train  <- fit_lasso %>% predict(poverty)
+predictions <- predict(fit_lasso, newx = as.matrix(X), s =bestlam)
+
+ R2(predictions ,poverty$p6b51)
+```
+```{r}
+ 
+```  
