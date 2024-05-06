@@ -1,0 +1,231 @@
+---
+title: "finalLogitModel"
+author: "DominiqueBarnes"
+date: "2024-05-05"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages}
+library(tidyverse)
+library(haven)
+library(readxl)
+library(MASS)
+library(ggplot2)
+```
+
+```{r Load in Data}
+df <- as.data.frame(read_dta("/Users/dominiquebarnes/Desktop/SPR24_Coursework/DATA 2020/FFdata/wave6/FF_wave6_2020v2.dta"))
+other_var <- read.csv("/Users/dominiquebarnes/Desktop/SPR24_Coursework/DATA 2020/Final_Project/Finances/OtherVars.csv")
+other_df <- as.data.frame(other_var)
+# Select Columns 
+other_var_code <- other_df$Variable
+df_select<- df %>% dplyr::select(all_of(other_var_code))
+
+```
+
+```{r Missing Values}
+df_filt <- df_select %>%
+  filter_all(all_vars(. !=-9 &. !=-8 &. !=-7  &.  !=-5 &. !=-4 &. !=-3 &. !=-2 &. !=-1 ))
+
+```
+
+```{r Visualize Poverty Ratio}
+# cp6povco poverty ratio
+poverty_ratio = df_filt$cp6povco
+#Histogram
+hist(poverty_ratio, breaks = 20, main = "Distribution of Poverty Ratios", xlab = "Poverty Ratio")
+#Density Plot
+# Assuming your poverty ratio variable is named "poverty_ratio"
+plot(density(poverty_ratio), main = "Density Plot of Poverty Ratios", xlab = "Poverty Ratio", ylab = "Density")
+
+```
+
+
+```{r Visualize Poverty Status vs Income}
+# Poverty Ratio v Income
+income = df_filt$cp6hhinc
+ggplot(df_filt, aes(x = poverty_ratio, y = income)) +
+  geom_point(color = 'blue', alpha = 0.5) +
+  labs(title = 'Scatter Plot of Poverty Ratio vs. Income',
+       x = 'Poverty Ratio',
+       y = 'Income') +
+  theme_minimal()
+
+# Poverty Cat v Income
+
+ggplot(df_filt, aes(x = factor(cp6povca), y = income)) +
+  geom_boxplot(color = 'red', fill = 'lightblue', alpha = 0.7) +
+  geom_hline(yintercept = 28000, color = "blue", linetype = "dashed", linewidth = 1) +
+  labs(title = 'Boxplot of Income Across Poverty Categories',
+       x = 'Poverty Category',
+       y = 'Income') +
+  theme_minimal()+
+  theme(axis.text.x = element_text(face = "bold"),
+        axis.text.y = element_text(face = "bold"),
+        axis.title = element_text(face = "bold"),
+        plot.title = element_text(face = "bold"))
+
+```
+
+```{r Create Binary Variable for Poverty Category 0 for below 2 and 1 for greater than 2}
+df_filt$binary_poverty_category <- NA
+# Assign 0 to rows where poverty category is below or equal to 2, and 1 otherwise
+df_filt$binary_poverty_category[df_filt$cp6povca <= 2] <- 0
+df_filt$binary_poverty_category[df_filt$cp6povca > 2] <- 1
+
+ggplot(df_filt, aes(x = factor(binary_poverty_category))) +
+  geom_bar(fill = 'lightblue', color = 'blue', alpha = 0.7) +
+  labs(title = 'Bar Chart of Binary Poverty Category',
+       x = 'Binary Poverty Category',
+       y = 'Count') +
+  theme_minimal()
+```
+
+```{r Independent and Dependent Variables}
+dependent_vars <- c('cp6hhsize','p6a3','p6a4','p6i19','p6i20_8','p6i21','p6j7','p6j8','p6j9','p6j11','p6j14','p6j15','p6j24','p6j25','p6j30','p6j31','p6j33','p6j34','p6j35','p6j36','p6j37','p6j38','p6j39','p6j40','p6j41','p6j42','p6j43','p6j44','p6j45','p6j46','p6j47','p6k6','p6k13','p6k34','p6k63','p6k65','p6k66','p6k67','p6k68','p6k69','p6k70','p6k71','p6k72','p6k73','p6b31','p6e24','p6e29','p6f9','p6f10','p6j3','p6j4','p6j18','p6j19','p6j20','p6j21','p6j22','p6j23','p6j26','p6j27','p6j28','p6j29','p6j32','p6j48','p6j49','p6j50','p6j51','p6j52','p6j53','p6j54','p6j55','p6j56','p6j57','p6j58','p6k3_8','p6k5','p6k54','p6k59','p6k60','p6k61','p6k62','p6k64','p6k74','k6e35k','binary_poverty_category')
+
+independent_var <- df_filt$binary_poverty_category
+
+final_df <- df_filt %>% dplyr::select(all_of(dependent_vars))
+
+```
+
+```{r Preprocessing}
+data <-final_df
+
+
+binary_vars <- c('p6a4','p6i19','p6i20_8','p6j14','p6j15','p6j24','p6j30','p6j33','p6j34','p6j35','p6j36','p6j37','p6j38','p6j39','p6j40','p6j41','p6j42','p6j43','p6j44','p6j45','p6j46','p6j47','p6k6','p6k13','p6k63','p6k67','p6k68','p6k70','p6k72','p6k73','p6b31','p6e24','p6f9','p6j3','p6j4','p6j18','p6j20','p6j21','p6j23','p6j26','p6j27','p6j29','p6j32','p6j48','p6j49','p6j50','p6j51','p6j52','p6j53','p6j54','p6j55','p6j56','p6j57','p6j58','p6k3_8','p6k5','p6k59','p6k60','p6k61','p6k62','p6k64','p6k74','k6e35k')
+  
+#cat_vars <- c('p6k19_code_pub','p6k36_code_pub')
+  
+cont_vars <- c('cp6hhsize','p6a3','p6i21','p6j7','p6j8','p6j9','p6j11','p6j25','p6j31','p6k34','p6k65','p6k66','p6k69','p6k71','p6e29','p6f10','p6j19','p6j22','p6j28','p6k54')
+
+
+#One hot encoding Categorical Variables 
+# Perform one-hot encoding for each categorical variable
+#encoded_data <- model.matrix(~ . - 1, data = data[, cat_vars])
+# Combine the encoded data with the original data frame
+#data <- cbind(data, encoded_data)
+
+#Binary 
+# Replace 2 with 0 for each binary variable
+for (var in binary_vars) {
+  data[[var]] <- ifelse(data[[var]] == 2, 0, data[[var]])
+}
+
+data[, cont_vars] <- scale(data[, cont_vars])
+
+```
+
+```{r Train Test Data Split}
+# Set the seed for reproducibility
+set.seed(123)
+
+# Assuming 'data' is your preprocessed dataset
+n <- nrow(data)
+train_indices <- sample(1:n, 0.8 * n)  # 80% for training
+data_train <- data[train_indices, ]
+data_test <- data[-train_indices, ]
+
+
+```
+
+```{r Multicollinearity}
+#Correlation Matrics
+correlation_matrix <- cor(data_train[, dependent_vars])
+highly_correlated_pairs <- which(correlation_matrix > 0.7 & correlation_matrix != 1, arr.ind = TRUE)
+
+#Remove one variable from each highly correlated pair
+vars_to_remove <- rownames(correlation_matrix)[highly_correlated_pairs[, "col"]]
+data_train_filtered <- data_train[, !colnames(data_train) %in% vars_to_remove]
+data_test_filtered <- data_test[, !colnames(data_test) %in% vars_to_remove]
+```
+
+```{r Logistic Regression Model}
+library(caret)
+ctrl <- trainControl(method = "cv", number = 5)
+data_train_filtered$binary_poverty_category <- factor(data_train_filtered$binary_poverty_category, levels = c(0, 1))
+
+# Build Logistic Regression Model
+model_logit <- train(binary_poverty_category ~. , data = data_train_filtered, method = "glm"  , trControl = ctrl, family= binomial(link="logit"))
+
+summary(model_logit)
+
+#Predictions and Model Eval
+predictions_logit <- predict(model_logit, newdata = data_test_filtered, type = "prob")
+
+```
+
+
+```{r Evalu Model Performance}
+# Extract predicted probabilities for the positive class
+predicted_probs <- predictions_logit[, 2]
+
+# Calculate predictions (convert probabilities to binary predictions)
+predicted_class <- ifelse(predicted_probs > 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy <- mean(predicted_class == data_test_filtered$binary_poverty_category)
+cat("Accuracy:", accuracy, "\n")
+
+# Calculate confusion matrix
+confusion <- table(predicted_class, data_test_filtered$binary_poverty_category)
+
+# Calculate precision, recall, specificity, and F1 score
+TP <- confusion[2, 2]
+FP <- confusion[1, 2]
+TN <- confusion[1, 1]
+FN <- confusion[2, 1]
+
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+specificity <- TN / (TN + FP)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("Specificity:", specificity, "\n")
+cat("F1 Score:", f1_score, "\n")
+print(confusion)
+
+```
+
+```{r Estimate and Std.Error Plot For Gov and Social Aid}
+gov_social_aid_vars <- c('p6j36','p6j44','p6j45','p6k70','p6b31','p6f9','p6j20','p6j23','p6j26','p6j29','p6j32','p6k3_8','p6k5')
+
+gov_social_aid_names <- c('Youth_FreeDinner','Moved_Friends','Moved_Shelter','Loans','Medicaid','ChildSupport','Welfare_TANF','UI_WC','FoodStamps_LastInt','SSI_SSDI','CashAid_LastInt','JobCorps','EmploymentCounsel')
+
+
+# Extract coefficients and standard errors for the variables of interest
+coefficients <- summary(model_logit)$coef[, 1]
+se <- summary(model_logit)$coef[, 2]
+
+# Create a data frame
+df <- data.frame(
+  Variables = gov_social_aid_names, 
+  Estimate = coefficients[gov_social_aid_vars], 
+  se = se[gov_social_aid_vars]
+)
+
+# Calculate confidence intervals
+df$lower <- df$Estimate - 1.96 * df$se
+df$upper <- df$Estimate + 1.96 * df$se
+
+# Plot
+ggplot(df, aes(x = Variables, y = Estimate)) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.5) +
+  geom_point() +
+  theme_bw() +
+  labs(title = "Coefficients of Government and Social Aid", y = "Estimate")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+
+
+```
+
+  
