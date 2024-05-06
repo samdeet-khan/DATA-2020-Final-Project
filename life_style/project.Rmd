@@ -1,0 +1,992 @@
+ 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(broom)
+library(car)
+library(ggplot2)
+library(lmtest)
+library(glmnet)
+library(ggplot2)
+library(caret)
+library(boot)
+library(haven)
+```
+
+
+```{r}
+w6 <- read_dta("w6.dta")
+cat("dimensions of the data frame:",dim(w6))
+
+```
+
+
+
+```{r}
+head(w6)
+```
+
+
+```{r}
+  
+ 
+relations <-  c("cp6ylpcg", "cp6mrelf",   "p6e1", "cp6hhsize", "p6d24", "p6d25", "k6c6a", "k6c6b", "k6c7c", "p6d28", "p6d29", "k6c9c", "k6c9d", "p6d31", "k6d36b", "p6d32", "p6d33", "p6d34", "p6d35", "p6d36", "p6d37", "p6d39", "p6e38", "p6e39", "p6f1", "p6f2", "p6f11", "p6f22", "k6c10", "k6c21", "k6c17", "k6c28", "k6c33", "k6c37", "p6f32", "p6f35", "p6g9", "p6g11", "p6g17", "p6g23", "k6c00aa", "k6c00ab", "k6c00ac", "k6c00ad", "k6c00ak", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c9f", "k6c46", "k6c47", "k6d35b", "k6d46", "k6d57", "k6d59", "k6f1a", "k6f1b" , "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "p6d21a", "k6b1a", "k6b29", "k6b30", "k6d1b", "k6d1d", "k6d1e", "k6d1f", "k6d1i", "k6d1j", "k6d1k", "k6d2g", "k6d2l", "k6d2y", "k6d36d", "k6d62a", "k6d62b", "k6d62c", "k6d62g", "k6d64", "k6f4", "k6f14" , "p6b51" , "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e10", "k6e12", "k6e18", "k6e36" , "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44", "k6d48", "k6d55", "k6f63", "p6h75", "p6h76", "p6h79", "p6h87a" ,"p6i3", "p6i4", "p6i5", "p6i7", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6j11" )
+
+social <- w6[relations]
+social <- social[!duplicated(names(social)) | !names(social) %in% relations]
+
+cat("dimensions of the social related data:",dim(social))
+```
+ 
+```{r}
+  social <- subset(social, !apply(social, 1, function(x) any(x ==-9 | x==-7)))
+  cat("dimensions of the filtered social related data:",dim(social))
+```
+
+```{r}
+dmy <- dummyVars(" ~ .", data = social)
+social <- data.frame(predict(dmy, newdata = social))
+
+
+```
+
+
+
+```{r}
+social$p6i3
+```
+
+```{r}
+
+cor(social[c("p6i3", "p6i4", "p6i5", "p6i7")])
+
+```
+
+3~4~5 -> 4
+```{r}
+ 
+
+cor(social[c("k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14")])
+
+```
+ 
+```{r}
+head(social$k6d40)
+```
+```{r}
+social$k6d40
+summary(social$k6d40)
+summary(social$k6d42)
+```
+```{r}
+
+social$cig_num <- ifelse(social$k6d40 == 2, 0, ifelse(social$k6d40 == 1, social$k6d42, social$k6d40))
+summary(social$cig_num)
+social$cig_num
+
+```
+
+
+
+```{r}
+head(social$k6e10)
+```
+```{r}
+summary(social$k6e12)
+```
+ 
+```{r}
+social$police_stop_num <- ifelse(social$k6e10 == 2, 0, ifelse(social$k6e10 == 1, social$k6e12, social$k6e10))
+summary(social$police_stop_num)
+```
+```{r}
+social$suspend_num <- ifelse(social$k6b29 == 2, 0, ifelse(social$k6b29 == 1, social$k6b30, social$k6b29))
+summary(social$suspend_num)
+```
+
+
+```{r}
+cor(social[c( "cp6mrelf", "cp6prelb", "cp6pmarb", "p6e1")])
+```
+"cp6mrelf", "cp6prelb", "cp6pmarb" -> cp6mrelf
+```{r}
+cor(social[c(  "p6d24", "p6d25", "k6c6a", "k6c6b", "k6c7c")])
+```
+```{r}
+cor(social[c( "p6d28", "p6d29", "k6c9c", "k6c9d")])
+```
+ 
+```{r}
+cor(social[c("p6d32", "p6d33", "p6d34", "p6d35", "p6d36")])
+```
+ 
+```{r}
+cor(social[c( "p6f1", "p6f2", "p6f11", "p6f22", "k6c10", "k6c21", "k6c17", "k6c28", "k6c33", "k6c37")])
+```
+ p6f2 , p6f22 , k6c21 -> p6f22
+```{r}
+#A1
+library(caret)
+A1_vars <- c("k6f63", "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44", "k6d48", "k6d55", "p6h75", "p6h76",   "p6h87a", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b49", "p6d21a", "k6b1a", "k6d1f", "k6d1j", "k6d2g", "k6d2l", "k6d2y", "k6d62a", "k6d62c", "k6d64", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d25", "k6c6a", "k6c6b", "p6d39", "p6f32", "p6g9", "k6c4b", "k6c4e", "k6c46", "k6c47", "k6d46", "k6d57", "k6d59")
+A1  <- social[,unique(A1_vars)]
+```
+ 
+ 
+```{r}
+#A2
+A2_vars <- c("cig_num", "k6f63", "p6h78", "p6h79", "p6h80", "p6h86", "k6d44", "k6d48", "k6d55", "p6h75", "p6h76", "p6h79", "p6h87a", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b49", "p6d21a", "k6b1a", "k6d1f", "k6d1j", "k6d2g", "k6d2l", "k6d2y", "k6d62a", "k6d62c", "k6d64", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d25", "k6c6a", "k6c6b", "p6d39", "p6f32", "p6g9", "k6c4b", "k6c4e", "k6c46", "k6c47", "k6d46", "k6d57", "k6d59")
+A2  <- social[,unique(A2_vars)]
+```
+ 
+ 
+ 
+```{r}
+#A3
+A3_vars <- c("k6d55", "p6h78", "p6h79", "p6h80", "p6h86", "k6d40", "k6d42", "k6d44",  "k6f63", "p6h75", "p6h76", "p6h79", "p6h87a", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b49", "p6d21a", "k6b1a", "k6d1f", "k6d1j", "k6d2g", "k6d2l", "k6d2y", "k6d62a", "k6d62c", "k6d64", "cp6ylpcg", "cp6mrelf",     "p6e1", "p6d24", "p6d25", "k6c6a", "k6c6b", "p6d39", "p6f32", "p6g9", "k6c4b", "k6c4e", "k6c46", "k6c47", "k6d46", "k6d57", "k6d59")
+A3 <- social[,unique(A3_vars)]
+```
+ 
+ 
+ 
+```{r}
+B1_vars <- c("police_stop_num", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "k6e36", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",  "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B1 <- social[,unique(B1_vars)]
+```
+ 
+ 
+ 
+```{r}
+B2_vars <- c("suspend_num", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "k6e36", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",  "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",  "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47","k6d55"   )
+B2 <- social[,unique(B2_vars)]
+```
+ 
+```{r}
+B3_vars <- c("k6e36", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6b35", "p6b37", "p6b39", "p6b38", "p6b41", "p6b42", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",   "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33",   "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B3 <- social[,unique(B3_vars)]
+```
+ 
+ 
+```{r}
+B4_vars <- c("p6b41", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b35", "p6b37", "p6b39", "p6b38", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",  "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B4 <- social[,unique(B4_vars)]
+```
+ 
+ 
+```{r}
+B5_vars <- c("p6b42", "p6h102", "k6d61b", "k6d61c", "k6d61d", "k6e5", "k6e6", "k6e7e", "k6e7f", "k6e18", "p6h86", "k6e4b", "k6e4c", "p6i11", "p6i12", "p6i13", "p6i14", "p6b35", "p6b37", "p6b39", "p6b38", "p6b45", "p6b49", "k6d62g", "cp6ylpcg", "cp6mrelf",  "p6e1", "p6d24", "p6d29", "k6c9c", "k6c9d", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "p6f35", "p6g11", "p6g17", "p6g23", "k6c3", "k6c4b", "k6c4e", "k6c9a", "k6c46", "k6c47")
+B5 <- social[,unique(B5_vars)]
+```
+ 
+ 
+ 
+```{r}
+C1_vars <- c("p6b51", "p6h102", "k6d61b", "k6d61c", "k6e7f", "p6b35", "p6b37", "p6b39", "p6b38", "p6b49", "k6d1b", "k6d1f", "k6d2l", "p6d37", "p6e38", "p6e39", "p6f1",   "p6f11", "p6f22", "k6c10",  "k6c17", "k6c28", "k6c33", "k6c37", "p6g11", "p6g17", "k6c4b", "k6c4e", "k6c46", "k6c47")
+C1 <- social[,unique(C1_vars)]
+
+```
+ 
+ 
+```{r}
+D1_vars <- c("k6f14", "p6b35", "p6b49", "p6d21a", "k6b1a", "k6d1d", "k6d1e", "k6d1f", "k6d1i", "k6d1j", "k6d1k", "k6d2g", "k6d2l", "k6d2y", "k6d36d", "k6d64", "cp6ylpcg", "cp6mrelf",   "p6e1", "cp6hhsize", "k6c7c", "p6d28", "p6d29", "k6c9c", "k6c9d", "p6d31", "k6d36b", "p6d37", "p6e38", "p6e39", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33",  "k6c3", "k6c4b", "k6c4e", "k6c9f", "k6c46", "k6c47", "k6d35b", "k6f1a", "k6f1b")
+D1 <- social[,unique(D1_vars)]
+```
+ 
+ 
+```{r}
+D2_vars <- c("k6d1j", "p6b35", "k6f4", "p6b49", "p6d21a", "k6b1a", "k6d1d", "k6d1e", "k6d1f", "k6d1i", "k6f14", "k6d1k", "k6d2g", "k6d2l", "k6d2y", "k6d36d", "k6d64", "cp6ylpcg", "cp6mrelf",   "p6e1", "cp6hhsize", "k6c7c", "p6d28", "p6d29", "k6c9c", "k6c9d", "p6d31", "k6d36b", "p6d37", "p6e38", "p6e39", "p6f1",   "p6f11", "p6f22", "k6c10",   "k6c17", "k6c28", "k6c33", "k6c37", "k6c3", "k6c4b", "k6c4e", "k6c9f", "k6c46", "k6c47", "k6d35b", "k6f1a", "k6f1b")
+D2 <- social[,unique(D2_vars)]
+```
+ 
+ 
+```{r}
+library(ggplot2)
+ his1 <- B1
+ his1$police_stop_num[his1$police_stop_num<0]<-0
+ggplot(his1, aes(x = police_stop_num)) +
+      geom_histogram(
+          binwidth = 1,
+          fill = "red", color = "yellow",  alpha = 0.6) +
+   
+  scale_y_continuous(trans = "log10") +
+      labs(
+          title = "Distribution of the times stopped by the police",
+          x = "Number of times stopped by the police", y = "Frequency" ) +
+       theme(
+          plot.title = element_text( hjust = 0.5, size = 16, face = "bold"  ),
+          axis.title.x = element_text(  size = 14, face = "bold"  ),
+          axis.title.y = element_text(  size = 14, face = "bold" ),   
+          panel.grid.minor = element_line(color = "gray", linewidth = 0.5)) 
+```
+ 
+
+
+```{r}
+ his2 <- B1
+ head(B1)
+ his2$police_stop_num[his2$police_stop_num<0]<- 0
+ his2$k6c4e  [his2$k6c4e  <0]<- NA
+ his2$k6c4e <- ifelse(his2$k6c4e  == 1 , "Zoo!",ifelse(his2$k6c4e  == 2 , "Moderate",ifelse(his2$k6c4e  == 3 , "Calm", "NA")) )
+ his2$k6d55_fac <- as.factor(his2$k6c4e  )
+ggplot(his2, aes(x = police_stop_num, fill = k6d55_fac           )) +
+      geom_histogram(
+          binwidth = 1,
+           alpha = 0.6) +
+    
+      labs(
+          title = "Distribution of the times stopped by police",
+          x = "Number of Times youth stopped by police", y = "Frequency" ,
+          fill = "home atmosphere") +
+  scale_y_continuous(trans = "log10") +
+       theme(
+          plot.title = element_text( hjust = 0.5, size = 16, face = "bold"  ),
+          axis.title.x = element_text(  size = 14, face = "bold"  ),
+          axis.title.y = element_text(  size = 14, face = "bold" ),   
+          panel.grid.minor = element_line(color = "gray", linewidth = 0.5)) 
+```
+ 
+ 
+```{r}
+ his2 <- B2
+
+ his2$suspend_num[his2$suspend_num<0]<- 0
+ his2$k6d55[his2$k6d55<0]<- 1
+ his2$k6d55_fac <- as.factor(his2$k6d55)
+ggplot(his2, aes(x = suspend_num, fill = k6d55_fac     , color=k6d55_fac     )) +
+      geom_histogram(
+          binwidth = 1,
+           alpha = 0.6) +
+   
+  scale_y_continuous(trans = "log10") +
+      labs(
+          title = "Distribution of the times suspended",
+          x = "Number of Times suspended or expelled in past 2 years", y = "Frequency" ) +
+       theme(
+          plot.title = element_text( hjust = 0.5, size = 16, face = "bold"  ),
+          axis.title.x = element_text(  size = 14, face = "bold"  ),
+          axis.title.y = element_text(  size = 14, face = "bold" ),   
+          panel.grid.minor = element_line(color = "gray", linewidth = 0.5)) 
+```
+
+ 
+ 
+```{r}
+
+
+box1 <- social
+
+
+box1$parents <- ifelse(social$cp6mrelf == 1 | social$cp6mrelf == 2| social$cp6mrelf == 6, "together", 
+                        ifelse(social$cp6mrelf < 1, "None",  "separated")) 
+
+box1$parents <- as.factor(box1$parents)
+box1$ethinity <- ifelse(social$k6c00aa == 1, "White  ", 
+                        ifelse(social$k6c00ab == 1, " Black ", 
+                              
+                                             ifelse(social$k6c00ak == 1, " Mixed" , "None")))
+box1$ethinity  <- as.factor(box1$ethinity)
+box1$stopped_by_police <- social$police_stop_num
+neg_box1 <- which(box1$stopped_by_police < 0)
+box1  <- box1[ - neg_box1,]
+ box1  <- box1[ - which(box1$parents ==  "None") ,]
+ggplot(box1 , aes(x= ethinity , y= stopped_by_police, fill = parents )) + geom_boxplot() +  
+  labs( title = "crime of different ethinities and parents relation  ",
+    x = "Ethinity",
+    y = " Times stopped by Police" ) +  
+   
+  scale_y_continuous(trans = "log10")+
+  theme(
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold" ) )
+        
+        
+```
+ 
+  
+```{r}
+
+summary(A1$k6f63)
+```
+
+```{r}
+neg_A1 <- which(A1$k6f63 < 0)
+A1  <- A1 [ - neg_A1,]
+summary(A1$k6f63)
+```
+
+
+```{r}
+A1$k6f63 <- -1 * A1$k6f63 +2 
+summary(A1$k6f63)
+
+```
+ 
+```{r}
+A1$k6f63 <- as.factor(A1$k6f63)
+A1_model <- glm(k6f63 ~ ., data = A1, family = "binomial")
+A1_kfold <- train(k6f63 ~ ., data = A1, family = "binomial",
+                  method="glm",  trControl = trainControl(method = "cv", number = 5))
+pvalues_A1 <- summary(A1_model )$coefficients[, "Pr(>|z|)"]
+A1_kfold_sig <- train(k6f63 ~ . , data = A1[, c("k6f63", names(pvalues_A1[pvalues < 0.05]))], family = "binomial",
+                  method="glm", trControl = trainControl(method = "cv", number = 5))
+ data.frame( Model = c("all parameters", "significant parameters"  ),
+            accuracy = c( A1_kfold $results$Accuracy, A1_kfold_sig$results$Accuracy),
+            predictors = c( length(predictors(A1_kfold )), length(predictors(A1_kfold_sig)))) 
+```
+
+```{r}
+num_cuts <- 5
+pred_probs_A1 <- predict(A1_model, type="response")
+calib_data_A1 <- data.frame(prob = pred_probs_A1, bin = cut(pred_probs_A1, breaks = num_cuts),class = A1_model$y)
+calib_data_A1 <- calib_data_A1 %>%
+group_by(bin) %>%
+summarize(observed = sum(class)/n(),
+expected = sum(prob)/n(),
+se = sqrt(observed*(1-observed)/n()))
+ggplot(calib_data_A1) +
+geom_abline(intercept = 0, slope = 1, color="red") +
+geom_errorbar(aes(x = expected, ymin=observed-1.96*se,
+ymax=observed+1.96*se),
+colour="black", width=.01)+
+geom_point(aes(x = expected, y = observed)) +
+labs(x="Expected Proportion", y="Observed Proportion") +
+theme_minimal()
+ 
+
+```
+ 
+```{r}
+summary(A1_kfold_sig)
+```
+ 
+ 
+  
+```{r}
+summary(A2$cig_num)
+ 
+```
+
+```{r}
+neg_A2 <- which(A2$cig_num < 0)
+A2  <- A2 [ - neg_A2,]
+summary(A2$cig_num)
+dim(A2)
+```
+
+ 
+ 
+```{r}
+ A2$cig_num <- as.numeric(A2$cig_num)
+A2_model <- lm(cig_num ~ ., data = A2)
+A2_predictions <- predict(A2_model, newdata = A2 )
+```
+ 
+```{r}
+set.seed(123)
+training_A2 <- A2$cig_num %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.A2  <- A2[training_A2, ]
+test.A2 <- A2[-training_A2, ]
+ 
+cv_A2 <- lm(     cig_num~ ., data = train.A2)
+ 
+predic_cv_A2_train <- cv_A2  %>% predict(train.A2)
+
+R2(predic_cv_A2_train, train.A2$cig_num)
+predic_cv_A2 <- cv_A2  %>% predict(test.A2)
+
+kfold_A2 <- train(       cig_num~.,
+               data = A2,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_A2 <- kfold_A2  %>% predict(A2)
+ 
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_A2,  A2$cig_num), R2(predic_cv_A2, test.A2$cig_num),R2(A2_predictions , A2$cig_num)),
+            RMSE = c(RMSE(predic_kfold_A2, A2$cig_num), RMSE(predic_cv_A2, test.A2$cig_num),RMSE(A2_predictions , A2$cig_num)) )
+```
+ 
+```{r}
+library(cowplot)
+A2$std_residuals <- rstandard(A2_model)
+p1_A2 <- ggplot(A2, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_A2 <- ggplot(A2, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_A2, p2_A2, ncol = 2)
+ 
+
+```
+  
+  
+  
+```{r}
+summary(A3$k6d55)
+```
+
+```{r}
+neg_A3 <- which(A3$k6d55 < 0)
+A3  <- A3 [ - neg_A3,]
+ 
+summary(A3$k6d55)
+A3$k6d55
+```
+
+ 
+```{r}
+A3$k6d55<- as.numeric(A3$k6d55)
+A3_model <-  lm(k6d55 ~ ., data = A3 )
+A3_predictions <- predict(A3_model, newdata = A3 )
+A3_predictions <- as.numeric(cut(A3_predictions, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+
+```
+
+ 
+```{r}
+set.seed(123)
+training_A3 <- A3$k6d55 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.A3  <- A3[training_A3, ]
+test.A3 <- A3[-training_A3, ]
+ 
+cv_A3 <- lm(    k6d55~ ., data = train.A3)
+ 
+predic_cv_A3 <- cv_A3  %>% predict(test.A3)
+predic_cv_A3 <- as.numeric(cut(predic_cv_A3, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+kfold_A3 <- train(     k6d55~.,
+               data = A3,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_A3 <- kfold_A3  %>% predict(A3)
+predic_kfold_A3 <- as.numeric(cut(predic_kfold_A3, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_A3,  A3$k6d55), R2(predic_cv_A3, test.A3$k6d55),R2(A3_predictions , A3$k6d55)),
+            RMSE = c(RMSE(predic_kfold_A3, A3$k6d55), RMSE(predic_cv_A3, test.A3$k6d55),RMSE(A3_predictions , A3$k6d55)) )
+```
+ 
+```{r}
+predic_cv_A3_train <- cv_A3  %>% predict(train.A3)
+
+R2(predic_cv_A3_train, train.A3$k6d55)
+```
+ 
+ 
+```{r}
+A3$std_residuals <- rstandard(A3_model)
+p1_A3 <- ggplot(A3, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_A3 <- ggplot(A3, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_A3, p2_A3, ncol = 2)
+```
+```{r}
+residuals  <-A3$k6d55 - predic_kfold_A3
+A3$sr_kf_A3 <- residuals/sd(residuals)
+p1_A3 <- ggplot(A3, aes(x = sr_kf_A3)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_A3 <- ggplot(A3, aes(sample = sr_kf_A3)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_A3, p2_A3, ncol = 2)
+
+```
+ 
+ 
+  
+```{r}
+summary(B1$police_stop_num)
+ 
+```
+
+```{r}
+neg_B1 <- which(B1$police_stop_num < 0)
+B1  <- B1[ - neg_B1,]
+summary(B1$police_stop_num)
+```
+
+ 
+ 
+```{r}
+B1$police_stop_num <- as.numeric(B1$police_stop_num)
+B1_model <-  lm(police_stop_num ~ ., data = B1 )
+B1_predictions <- predict(B1_model, newdata = B1 )
+```
+ 
+```{r}
+set.seed(123)
+training_B1 <- B1$police_stop_num%>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B1  <- B1[training_B1, ]
+test.B1 <- B1[-training_B1, ]
+ 
+cv_B1 <- lm(      police_stop_num~ ., data = train.B1)
+ 
+predic_cv_B1 <- cv_B1  %>% predict(test.B1)
+
+kfold_B1 <- train(        police_stop_num~.,
+               data = B1,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B1 <- kfold_B1  %>% predict(B1)
+ 
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B1,  B1$police_stop_num), R2(predic_cv_B1, test.B1$police_stop_num),R2(B1_predictions , B1$police_stop_num)),
+            RMSE = c(RMSE(predic_kfold_B1, B1$police_stop_num), RMSE(predic_cv_B1, test.B1$police_stop_num),RMSE(B1_predictions , B1$police_stop_num)) )
+```
+ 
+```{r}
+B1$std_residuals <- rstandard(B1_model)
+p1_B1 <- ggplot(B1, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B1 <- ggplot(B1, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B1, p2_B1, ncol = 2)
+```
+ 
+ 
+  
+```{r}
+summary(B2$suspend_num)
+ 
+```
+
+```{r}
+neg_B2 <- which(B2$suspend_num < 0)
+B2  <- B2[ - neg_B2,]
+summary(B2$suspend_num)
+```
+
+ 
+ 
+```{r}
+B2$suspend_num <- as.numeric(B2$suspend_num)
+B2_model <-  lm(suspend_num ~ ., data = B2 )
+```
+ 
+ 
+```{r}
+B2_predictions <- predict(B2_model, newdata = B2 )
+```
+ 
+```{r}
+set.seed(123)
+training_B2 <- B2$suspend_num%>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B2  <- B2[training_B2, ]
+test.B2 <- B2[-training_B2, ]
+ 
+cv_B2 <- lm(       suspend_num~ ., data = train.B2)
+ 
+predic_cv_B2 <- cv_B2  %>% predict(test.B2)
+
+kfold_B2 <- train(        suspend_num~.,
+               data = B2,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B2 <- kfold_B2  %>% predict(B2)
+ 
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B2,  B2$suspend_num), R2(predic_cv_B2, test.B2$suspend_num),R2(B2_predictions , B2$suspend_num)),
+            RMSE = c(RMSE(predic_kfold_B2, B2$suspend_num), RMSE(predic_cv_B2, test.B2$suspend_num),RMSE(B2_predictions , B2$suspend_num)) )
+```
+ 
+```{r}
+B2$std_residuals <- rstandard(B2_model)
+p1_B2 <- ggplot(B2, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B2 <- ggplot(B2, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B2, p2_B2, ncol = 2)
+```
+ 
+ 
+  
+```{r}
+summary(B3$k6e36 )
+```
+
+```{r}
+neg_B3 <- which(B3$k6e36 < 0)
+B3  <- B3[ - neg_B3,]
+summary(B3$k6e36)
+```
+
+
+```{r}
+B3$k6e36 <- -1 * B3$k6e36 +2 
+summary(B3$k6e36)
+
+```
+  
+ 
+ 
+```{r}
+B3$k6e36 <- as.factor(B3$k6e36)
+B3_model <- glm( k6e36 ~ ., data = B3 , family = "binomial")
+B3_kfold <- train( k6e36 ~ ., data = B3, family = "binomial",
+                  method="glm",  trControl = trainControl(method = "cv", number = 5))
+pvalues_B3 <- summary(B3_model )$coefficients[, "Pr(>|z|)"]
+B3_kfold_sig <- train( k6e36 ~ . , data = B3[, c("k6e36", names(pvalues_B3[pvalues < 0.05]))], family = "binomial",
+                  method="glm", trControl = trainControl(method = "cv", number = 5))
+ data.frame( Model = c("all parameters", "significant parameters"  ),
+            accuracy = c( B3_kfold $results$Accuracy, B3_kfold_sig$results$Accuracy),
+            predictors = c( length(predictors(B3_kfold )), length(predictors(B3_kfold_sig)))) 
+```
+ 
+ 
+```{r}
+pred_probs_B3 <- predict(B3_model, type="response")
+calib_data_B3 <- data.frame(prob = pred_probs_B3, bin = cut(pred_probs_B3, breaks = num_cuts),class = B3_model$y)
+calib_data_B3 <- calib_data_B3 %>%
+group_by(bin) %>%
+summarize(observed = sum(class)/n(),
+expected = sum(prob)/n(),
+se = sqrt(observed*(1-observed)/n()))
+ggplot(calib_data_B3) +
+geom_abline(intercept = 0, slope = 1, color="red") +
+geom_errorbar(aes(x = expected, ymin=observed-1.96*se,
+ymax=observed+1.96*se),
+colour="black", width=.01)+
+geom_point(aes(x = expected, y = observed)) +
+labs(x="Expected Proportion", y="Observed Proportion") +
+theme_minimal()
+```
+ 
+```{r}
+summary(B3_kfold_sig)
+```  
+  
+```{r}
+summary(B4$p6b41)
+```
+
+ 
+
+ 
+```{r}
+B4$p6b41<- as.numeric(B4$p6b41)
+B4_model <-  lm(p6b41 ~ ., data = B4  )
+B4_predictions <- predict(B4_model, newdata = B4 )
+B4_predictions <- as.numeric(cut(B4_predictions, breaks = c(-Inf, 1.5, 2.5,   Inf), labels = c(1, 2, 3 )))
+
+```
+
+
+```{r}
+set.seed(123)
+training_B4 <- B4$p6b41 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B4  <- B4[training_B4, ]
+test.B4 <- B4[-training_B4, ]
+ 
+cv_B4 <- lm(   p6b41~ ., data = train.B4)
+ 
+predic_cv_B4 <- cv_B4  %>% predict(test.B4)
+predic_cv_B4 <- as.numeric(cut(predic_cv_B4, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+kfold_B4 <- train(    p6b41~.,
+               data = B4,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B4 <- kfold_B4  %>% predict(B4)
+predic_kfold_B4 <- as.numeric(cut(predic_kfold_B4, breaks = c(-Inf, 1.5, 2.5 , Inf), labels = c(1, 2, 3 )))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B4,  B4$p6b41), R2(predic_cv_B4, test.B4$p6b41),R2(B4_predictions , B4$p6b41)),
+            RMSE = c(RMSE(predic_kfold_B4,  B4$p6b41), RMSE(predic_cv_B4, test.B4$p6b41),RMSE(B4_predictions , B4$p6b41)) )
+```
+ 
+```{r}
+B4$std_residuals <- rstandard(B4_model)
+p1_B4 <- ggplot(B4, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B4 <- ggplot(B4, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B4, p2_B4, ncol = 2)
+```
+
+ 
+ 
+```{r}
+summary(B5$p6b42)
+B5$p6b42<- as.numeric(B5$p6b42)
+B5_model <-  lm( p6b42 ~ ., data = B5  )
+B5_predictions <- predict(B5_model, newdata = B5  )
+B5_predictions <- as.numeric(cut(B5_predictions, breaks = c(-Inf, 1.5, 2.5,  Inf), labels = c(1, 2, 3 )))
+
+```
+
+ 
+```{r}
+set.seed(123)
+training_B5 <- B5$p6b42 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.B5  <- B5[training_B5, ]
+test.B5 <- B5[-training_B5, ]
+ 
+cv_B5 <- lm(  p6b42 ~ ., data = train.B5)
+ 
+predic_cv_B5 <- cv_B5  %>% predict(test.B5)
+predic_cv_B5 <- as.numeric(cut(predic_cv_B5, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+
+kfold_B5 <- train(   p6b42~.,
+               data = B5,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_B5 <- kfold_B5  %>% predict(B5)
+predic_kfold_B5 <- as.numeric(cut(predic_kfold_B5, breaks = c(-Inf, 1.5, 2.5 , Inf), labels = c(1, 2, 3 )))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_B5,  B5$p6b42), R2(predic_cv_B5, test.B5$p6b42),R2(B5_predictions , B5$p6b42)),
+            RMSE = c(RMSE(predic_kfold_B5,  B5$p6b42), RMSE(predic_cv_B5, test.B5$p6b42),RMSE(B5_predictions , B5$p6b42)) )
+```
+ 
+  
+```{r}
+B5$std_residuals <- rstandard(B5_model)
+p1_B5 <- ggplot(B5, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_B5 <- ggplot(B5, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_B5, p2_B5, ncol = 2)
+```
+  
+  
+  
+```{r}
+summary(C1$p6b51)
+```
+
+```{r}
+neg_C1 <- which(C1$p6b51 < 0)
+C1  <- C1 [ - neg_C1,]
+ 
+summary(C1$p6b51)
+ 
+```
+
+ 
+```{r}
+C1$p6b51<- as.numeric(C1$p6b51)
+C1_model <-  lm( p6b51 ~ ., data = C1  )
+C1_predictions <- predict(C1_model, newdata = C1 )
+C1_predictions <- as.numeric(cut(C1_predictions, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+
+```
+
+
+ 
+ 
+```{r}
+set.seed(123)
+training_C1 <- C1$p6b51 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.C1  <- C1[training_C1, ]
+test.C1 <- C1[-training_C1, ]
+ 
+cv_C1 <- lm(   p6b51 ~ ., data = train.C1)
+ 
+predic_cv_C1 <- cv_C1  %>% predict(test.C1)
+predic_cv_C1 <- as.numeric(cut(predic_cv_C1, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+kfold_C1 <- train(  p6b51~.,
+               data = C1,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_C1 <- kfold_C1  %>% predict(C1)
+predic_kfold_C1 <- as.numeric(cut(predic_kfold_C1, breaks = c(-Inf, 1.5, 2.5 , Inf), labels = c(1, 2, 3 )))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_C1,  C1$p6b51), R2(predic_cv_C1, test.C1$p6b51),R2(C1_predictions , C1$p6b51)),
+            RMSE = c(RMSE(predic_kfold_C1,  C1$p6b51), RMSE(predic_cv_C1, test.C1$p6b51),RMSE(C1_predictions , C1$p6b51)) )
+```
+ 
+```{r}
+C1$std_residuals <- rstandard(C1_model)
+p1_C1 <- ggplot(C1, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_C1 <- ggplot(C1, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_C1, p2_C1, ncol = 2)
+```
+ 
+  
+  
+```{r}
+summary(D1$k6f14)
+```
+
+```{r}
+neg_D1 <- which(D1$k6f14< 0)
+D1  <- D1 [ - neg_D1,]
+ 
+summary(D1$k6f14)
+ 
+```
+
+ 
+```{r}
+D1$k6f14<- as.numeric(D1$k6f14)
+D1_model <-  lm( k6f14 ~ ., data =D1 )
+D1_predictions <- predict(D1_model, newdata = D1 )
+D1_predictions <- as.numeric(cut(D1_predictions, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+
+```
+
+```{r}
+set.seed(123)
+training_D1 <- D1$k6f14 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.D1  <- D1[training_D1, ]
+test.D1 <- D1[-training_D1, ]
+ 
+cv_D1 <- lm(  k6f14 ~ ., data = train.D1)
+ 
+predic_cv_D1 <- cv_D1  %>% predict(test.D1)
+predic_cv_D1 <- as.numeric(cut(predic_cv_D1, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+kfold_D1 <- train( k6f14~.,
+               data = D1,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+ 
+predic_kfold_D1 <- kfold_D1  %>% predict(D1)
+predic_kfold_D1 <- as.numeric(cut(predic_kfold_D1, breaks = c(-Inf, 1.5, 2.5, 3.5, 4.5, Inf), labels = c(1, 2, 3,4,5)))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_D1,  D1$k6f14), R2(predic_cv_D1, test.D1$k6f14),R2(D1_predictions , D1$k6f14)),
+            RMSE = c(RMSE(predic_kfold_D1,  D1$k6f14), RMSE(predic_cv_D1, test.D1$k6f14),RMSE(D1_predictions , D1$k6f14)) )
+```
+ 
+```{r}
+D1$std_residuals <- rstandard(D1_model)
+p1_D1 <- ggplot(D1, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_D1 <- ggplot(D1, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_D1, p2_D1, ncol = 2)
+```
+ 
+  
+```{r}
+summary(D2$k6d1j)
+```
+
+```{r}
+neg_D2 <- which(D2$k6d1j < 0)
+D2  <- D2[ - neg_D2,]
+ 
+summary(D2$k6d1j)
+ 
+```
+
+ 
+```{r}
+D2$k6d1j<- as.numeric(D2$k6d1j)
+D2_model <-  lm(  k6d1j ~ ., data = D2  )
+D2_predictions <- predict(D2_model, newdata = D2 )
+D2_predictions <- as.numeric(cut(D2_predictions, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+
+```
+
+ 
+```{r}
+set.seed(123)
+training_D2 <- D2$k6d1j %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.D2  <- D2[training_D2, ]
+test.D2 <- D2[-training_D2, ]
+ 
+cv_D2 <- lm( k6d1j ~ ., data = train.D2)
+ 
+predic_cv_D2 <- cv_D2  %>% predict(test.D2)
+predic_cv_D2 <- as.numeric(cut(predic_cv_D2, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+
+```
+
+```{r}
+kfold_D2 <- train(k6d1j~.,
+               data = D2,
+                method = "lm",
+                  trControl = trainControl(method = "cv", number = 5))
+predic_kfold_D2 <- kfold_D2  %>% predict(D2)
+predic_kfold_D2 <- as.numeric(cut(predic_kfold_D2, breaks = c(-Inf, 1.5, 2.5, Inf), labels = c(1, 2, 3 )))
+data.frame( Model = c("k=5", "validation test" , "whole data set"),
+            R2 = c(R2(predic_kfold_D2,  D2$k6d1j), R2(predic_cv_D2, test.D2$k6d1j),R2(D2_predictions , D2$k6d1j)),
+            RMSE = c(RMSE(predic_kfold_D2,  D2$k6d1j), RMSE(predic_cv_D2, test.D2$k6d1j),RMSE(D2_predictions , D2$k6d1j)) )
+
+
+```
+ 
+```{r}
+D2$std_residuals <- rstandard(D2_model)
+p1_D2 <- ggplot(D1, aes(x = std_residuals)) +
+geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+geom_density(color = "red") +
+theme_minimal() +
+labs(title = "Histogram of Standardized Residuals", x = "Standardized Residuals", y = "Density")
+p2_D2 <- ggplot(D2, aes(sample = std_residuals)) +
+geom_qq() +
+geom_qq_line(color = "red") +
+theme_minimal() +
+labs(title = "QQ Plot of Standardized Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles")
+cowplot::plot_grid(p1_D2, p2_D2, ncol = 2)
+```
+ 
+ 
