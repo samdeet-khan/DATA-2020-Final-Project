@@ -222,7 +222,7 @@ train_test_split <- function(labels, train_prop)
 }
 ```
 
-### Util function for cross validation for best parameters
+### Parameter grid
 ```{r}
 param_grid <- expand.grid(
   ntree = c(100, 300, 500),
