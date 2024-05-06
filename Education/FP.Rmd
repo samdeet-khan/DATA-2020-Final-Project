@@ -1,0 +1,613 @@
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(haven)
+library(foreign)
+library(stringr)
+library(caret)
+library(stats)
+library(plotly)
+library(gridExtra)
+library(gridtext)
+library(grid)
+library(randomForest)
+```
+
+# Read metadata
+```{r}
+meta_data <- read.csv("FFMetadata_v13_UTF.csv")
+meta_data <- meta_data[meta_data$wave=="Year 15", ]
+meta_data
+```
+# Extract all academic variables for analysis
+
+### All academic (category education and school) variables of Year 15 from the website
+```{r}
+website_academic <- readLines("year_15_education_school.txt", warn=FALSE)
+website_academic <- str_replace_all(website_academic, "'", "")
+website_academic <- as.character(unlist(strsplit(website_academic, ", ")))
+length(website_academic)
+```
+
+### The Year 15 data
+```{r}
+year_15_data <- read_dta("FFdata\\wave6\\FF_wave6_2020v2.dta")
+year_15_data
+```
+
+### The academic variables present both on the website and in actual data
+```{r}
+year_15_academic <- year_15_data[names(year_15_data) %in% website_academic]
+year_15_academic
+```
+
+# Util functions to calculate missing rate for a variable
+```{r}
+process_row <- function(row) 
+{
+    labels <- vector()
+    frequencies <- vector()
+  
+    for (i in 1:30)   # there are at most 30 different values to take
+    {
+        label_col <- paste0("label", i)
+        freq_col <- paste0("freq", i)
+    
+        label <- row[[label_col]]
+        if (label != "") 
+        {
+          labels <- append(labels, label)
+          frequencies <- append(frequencies, as.integer(row[[freq_col]]))
+        }
+    }
+    
+    return(list(labels = labels, frequencies = frequencies))
+}
+
+calculate_percentage <- function(labels, frequencies) 
+{
+  if (length(labels) == 0) 
+  {
+    return(NA)
+  }
+  
+  total_freq <- sum(frequencies)
+  negative_freq <- sum(frequencies[labels <= 0])
+  
+  return(negative_freq / total_freq)
+}
+```
+
+### Analysis of missing values in these 132 academic variables
+```{r}
+missing_more_than_90 <- vector()
+for (v in colnames(year_15_academic))
+{
+  row <- meta_data[meta_data$new_name == v, ]
+  x <- process_row(row)
+  v_missing_percent <- calculate_percentage(x$labels, x$frequencies)
+  if (v_missing_percent >= 0.9)
+  {
+    missing_more_than_90 <- append(missing_more_than_90, v)
+  }
+}
+missing_more_than_90
+```
+
+### Adding health conditions and Income as non-academic features
+```{r}
+other_vars <- data.frame(
+  asthma = year_15_data$p6b2,
+  anemia = year_15_data$p6b3,
+  heart = year_15_data$p6b4,
+  depress = year_15_data$p6b5,
+  diabetes = year_15_data$p6b6,
+  limb = year_15_data$p6b7,
+  seizures = year_15_data$p6b8,
+  headache = year_15_data$p6b9_101,
+  obese = year_15_data$p6b9_102,
+  allergy = year_15_data$p6b9_103,
+  eczema = year_15_data$p6b9_104,
+  cholesterol = year_15_data$p6b9_105,
+  scoliosis = year_15_data$p6b9_106,
+  other_health_cond = year_15_data$p6b9_107,
+  adhd = year_15_data$p6b10,
+  autism = year_15_data$p6b11,
+  speech_problem = year_15_data$p6b12_101,
+  develop_delay = year_15_data$p6b12_102,
+  dyslexia = year_15_data$p6b12_103,
+  read_math_difficult = year_15_data$p6b12_104,
+  other_learn_disable = year_15_data$p6b12_105,
+  income = year_15_data$cp6hhinc
+)
+year_15_academic <- cbind(year_15_academic, other_vars)
+```
+
+### Take a look at the meanings of all academic variables
+```{r}
+meanings <- meta_data[meta_data$new_name %in% colnames(year_15_academic), ][, c("new_name", "varlab")]
+# print.data.frame(meanings, row.names = FALSE)
+```
+
+### Decision 1: Target will be the grades
+```{r}
+targets <- c("k6b20a", "k6b20b", "k6b20c", "k6b20d")
+grades <- as.data.frame(year_15_academic[, targets])
+names(grades) <- c("English/LanguageArts", "Math", "History/SocialStudies", "Science")
+grades
+```
+
+### Decision 2: Fit four separate classification models to predict each grade
+#### See if the features affect a particular subject more
+```{r}
+features <- year_15_academic[, setdiff(names(year_15_academic), targets)]
+features
+```
+
+### Preprocessing
+```{r}
+continuous_vars <- c("p6b21", "p6c4", "p6c22", "p6j5", "k6b6", "k6b7", "k6b28", "k6b30", "k6d4", "income")
+categorical_vars <- setdiff(colnames(features), continuous_vars)
+
+features[, categorical_vars] <- apply(features[, categorical_vars], 2, as.factor)
+
+binary_vars <- sapply(features, function(x) is.factor(x) && length(levels(x)) == 2)
+binary_12_vars <- sapply(features, function(x) is.factor(x) && length(levels(x)) == 2 &&
+                                   all(levels(x) %in% c(1, 2)))
+features[, binary_12_vars] <- lapply(features[, binary_12_vars], 
+                                   function(x) ifelse(x == 2, 1, 0))
+
+dmy <- dummyVars(" ~ .", data = features[!binary_vars])
+encoded_features <- data.frame(predict(dmy, newdata = features[!binary_vars]))
+encoded_features <- cbind(encoded_features, features[binary_vars])
+
+encoded_features <- cbind(grades, encoded_features)
+encoded_features
+```
+
+### Replace all negative continuous values by 0
+```{r}
+encoded_features[, continuous_vars] <- apply(encoded_features[, continuous_vars],
+                                             2,
+                                             function(x) ifelse(x < 0, -1, x))
+encoded_features
+```
+
+### Remove useless information
+```{r}
+# Columns corresponding to a negative category of categorical variables are useless
+keep_cols <- vector()
+all_cols <- colnames(encoded_features)
+for (i in 1:ncol(encoded_features))
+{
+  if (!grepl(".", all_cols[i], fixed=TRUE))
+  {
+    keep_cols <- append(keep_cols, i)
+  }
+}
+
+encoded_features <- encoded_features[, keep_cols]
+encoded_features
+```
+
+
+### Reset index and standardize all the features
+```{r}
+row.names(encoded_features) <- 1:nrow(encoded_features)
+encoded_features[, 5:ncol(encoded_features)] <- 
+  as.data.frame(scale(encoded_features[, 5:ncol(encoded_features)]))
+encoded_features
+```
+
+
+### Data partioning util function
+#### To make sure both training data and testing data have all classes
+```{r}
+train_test_split <- function(labels, train_prop)
+{
+  train_indices <- vector()
+  counts <- as.data.frame(table(labels))
+  for (i in 1:nrow(counts))
+  {
+    value <- counts$labels[i]
+    freq <- counts$Freq[i]
+    n_train <- floor(freq*train_prop)
+    
+    all_indices <- which(labels==value)
+    train_indices <- append(train_indices, sample(all_indices, n_train))
+  }
+  
+  return(train_indices)
+}
+```
+
+### Util function for cross validation for best parameters
+```{r}
+param_grid <- expand.grid(
+  ntree = c(100, 300, 500),
+  mtry = c(21, 45, 90),
+  nodesize = c(5, 20, 50),
+  maxnodes = c(100, 200, 300)
+)
+```
+
+
+### Multiclass classification for English/LanguageArts grade
+```{r}
+eng_data <- encoded_features[, c(1, 5:ncol(encoded_features))]
+colnames(eng_data)[1] = "grade"
+
+# Drop all rows where the target is negative (i.e., missing)
+eng_data <- subset(eng_data, eng_data$grade > 0)
+
+set.seed(1)
+train_indices_eng <- train_test_split(as.numeric(eng_data$grade), 0.8)
+
+train_eng <- eng_data[train_indices_eng, ]
+test_eng <- eng_data[-train_indices_eng, ]
+```
+
+#### Fit the model
+```{r}
+search_eng <- function(params)
+{
+  set.seed(1)
+  
+  model_eng <- randomForest(
+    as.factor(grade) ~.,
+    data = train_eng,
+    ntree = params[1],
+    mtry = params[2],
+    nodesize = params[3],
+    maxnodes = params[4],
+    importance = FALSE
+  )
+  
+  pred_train <- predict(model_eng, train_eng)
+  pred_test <- predict(model_eng, test_eng)
+  train_acc <- mean(pred_train == as.factor(train_eng$grade))
+  test_acc <- mean(pred_test == as.factor(test_eng$grade))
+  
+  return(c(train_acc, test_acc))
+}
+
+results_eng <- apply(param_grid, 1, search_eng)
+results_eng
+```
+
+### Multiclass classification for Math grade
+```{r}
+math_data <- encoded_features[, c(2, 5:ncol(encoded_features))]
+colnames(math_data)[1] = "grade"
+
+# Drop all rows where the target is negative (i.e., missing)
+math_data <- subset(math_data, math_data$grade > 0)
+
+set.seed(1)
+train_indices_math <- train_test_split(as.numeric(math_data$grade), 0.8)
+
+train_math <- math_data[train_indices_math, ]
+test_math <- math_data[-train_indices_math, ]
+```
+
+#### Fit the model
+```{r}
+search_math <- function(params)
+{
+  set.seed(1)
+  
+  model_math <- randomForest(
+    as.factor(grade) ~.,
+    data = train_math,
+    ntree = params[1],
+    mtry = params[2],
+    nodesize = params[3],
+    maxnodes = params[4],
+    importance = FALSE
+  )
+  
+  pred_train <- predict(model_math, train_math)
+  pred_test <- predict(model_math, test_math)
+  train_acc <- mean(pred_train == as.factor(train_math$grade))
+  test_acc <- mean(pred_test == as.factor(test_math$grade))
+  
+  return(c(train_acc, test_acc))
+}
+
+results_math <- apply(param_grid, 1, search_math)
+results_math
+```
+
+### Multiclass classification for History/SocialStudies grade
+```{r}
+hist_data <- encoded_features[, c(3, 5:ncol(encoded_features))]
+colnames(hist_data)[1] = "grade"
+
+# Drop all rows where the target is negative (i.e., missing)
+hist_data <- subset(hist_data, hist_data$grade > 0)
+
+set.seed(1)
+train_indices_hist <- train_test_split(as.numeric(hist_data$grade), 0.8)
+
+train_hist <- hist_data[train_indices_hist, ]
+test_hist <- hist_data[-train_indices_hist, ]
+```
+
+#### Fit the model
+```{r}
+search_hist <- function(params)
+{
+  set.seed(1)
+  
+  model_hist <- randomForest(
+    as.factor(grade) ~.,
+    data = train_hist,
+    ntree = params[1],
+    mtry = params[2],
+    nodesize = params[3],
+    maxnodes = params[4],
+    importance = FALSE
+  )
+  
+  pred_train <- predict(model_hist, train_hist)
+  pred_test <- predict(model_hist, test_hist)
+  train_acc <- mean(pred_train == as.factor(train_hist$grade))
+  test_acc <- mean(pred_test == as.factor(test_hist$grade))
+  
+  return(c(train_acc, test_acc))
+}
+
+results_hist <- apply(param_grid, 1, search_hist)
+results_hist
+```
+
+### Multiclass classification for Science grade
+```{r}
+sci_data <- encoded_features[, c(4, 5:ncol(encoded_features))]
+colnames(sci_data)[1] = "grade"
+
+# Drop all rows where the target is negative (i.e., missing)
+sci_data <- subset(sci_data, sci_data$grade > 0)
+
+set.seed(1)
+train_indices_sci <- train_test_split(as.numeric(sci_data$grade), 0.8)
+
+train_sci <- sci_data[train_indices_sci, ]
+test_sci <- sci_data[-train_indices_sci, ]
+```
+
+#### Fit the model
+```{r}
+search_sci <- function(params)
+{
+  set.seed(1)
+  
+  model_sci <- randomForest(
+    as.factor(grade) ~.,
+    data = train_sci,
+    ntree = params[1],
+    mtry = params[2],
+    nodesize = params[3],
+    maxnodes = params[4],
+    importance = FALSE
+  )
+  
+  pred_train <- predict(model_sci, train_sci)
+  pred_test <- predict(model_sci, test_sci)
+  train_acc <- mean(pred_train == as.factor(train_sci$grade))
+  test_acc <- mean(pred_test == as.factor(test_sci$grade))
+  
+  return(c(train_acc, test_acc))
+}
+
+results_sci <- apply(param_grid, 1, search_sci)
+results_sci
+```
+
+### Feature Importance
+
+### model_eng
+```{r}
+best_acc_eng <- results_eng[, 43]
+best_acc_eng
+
+best_param_eng <- param_grid[43, ]
+best_param_eng
+
+set.seed(123)
+best_model_eng <- randomForest(
+    as.factor(grade) ~.,
+    data = train_eng,
+    ntree = 100,
+    mtry = 90,
+    nodesize = 20,
+    maxnodes = 200,
+    importance = TRUE
+)
+```
+
+```{r}
+importance_eng <- data.frame(importance(best_model_eng))
+importance_eng
+
+importance_eng_sorted <- importance_eng[order(importance_eng$MeanDecreaseAccuracy, decreasing=TRUE), ]
+
+ggplot(importance_eng_sorted[1:10, ], 
+       aes(y=reorder(rownames(importance_eng_sorted)[1:10], MeanDecreaseAccuracy), 
+           x=MeanDecreaseAccuracy)) +
+  geom_bar(stat="identity") +
+  labs(title = "Top 10 Most Important Variables \n [Target: English/LanguageArts grade] \n [Metric: MeanDecreaseAccuracy]",
+       x = "Mean Decrease in Accuracy Across All Classes",
+       y = "Variables")
+```
+
+### model_math
+```{r}
+best_acc_math <- results_math[, 67]
+best_acc_math
+
+best_param_math <- param_grid[67, ]
+best_param_math
+
+set.seed(123)
+best_model_math <- randomForest(
+    as.factor(grade) ~.,
+    data = train_math,
+    ntree = 100,
+    mtry = 45,
+    nodesize = 20,
+    maxnodes = 300,
+    importance = TRUE
+)
+```
+
+```{r}
+importance_math <- data.frame(importance(best_model_math))
+importance_math
+
+importance_math_sorted <- importance_math[order(importance_math$MeanDecreaseAccuracy, decreasing=TRUE), ]
+
+ggplot(importance_math_sorted[1:10, ], 
+       aes(y=reorder(rownames(importance_math_sorted)[1:10], MeanDecreaseAccuracy),
+           x=MeanDecreaseAccuracy)) +
+  geom_bar(stat="identity") +
+  labs(title = "Top 10 Most Important Variables \n [Target: Math grade] \n [Metric: MeanDecreaseAccuracy]",
+       x = "Mean Decrease in Accuracy Across All Classes",
+       y = "Variables")
+```
+
+
+### model_hist
+```{r}
+best_acc_hist <- results_hist[, 15]
+best_acc_hist
+
+best_param_hist <- param_grid[15, ]
+best_param_hist
+
+set.seed(123)
+best_model_hist <- randomForest(
+    as.factor(grade) ~.,
+    data = train_hist,
+    ntree = 500,
+    mtry = 45,
+    nodesize = 20,
+    maxnodes = 100,
+    importance = TRUE
+)
+```
+
+```{r}
+importance_hist <- data.frame(importance(best_model_hist))
+importance_hist
+
+importance_hist_sorted <- importance_hist[order(importance_hist$MeanDecreaseAccuracy, decreasing=TRUE), ]
+
+ggplot(importance_hist_sorted[1:10, ], 
+       aes(y=reorder(rownames(importance_hist_sorted)[1:10], MeanDecreaseAccuracy),
+           x=MeanDecreaseAccuracy)) +
+  geom_bar(stat="identity") +
+  labs(title = "Top 10 Most Important Variables \n [Target: History/SocialStudies grade] \n [Metric: MeanDecreaseAccuracy]",
+       x = "Mean Decrease in Accuracy Across All Classes",
+       y = "Variables")
+```
+
+### model_sci
+```{r}
+best_acc_sci <- results_sci[, 59]
+best_acc_sci
+
+best_param_sci <- param_grid[59, ]
+best_param_sci
+
+set.seed(123)
+best_model_sci <- randomForest(
+    as.factor(grade) ~.,
+    data = train_sci,
+    ntree = 300,
+    mtry = 45,
+    nodesize = 5,
+    maxnodes = 300,
+    importance = TRUE
+)
+```
+
+```{r}
+importance_sci <- data.frame(importance(best_model_sci))
+importance_sci
+
+importance_sci_sorted <- importance_sci[order(importance_sci$MeanDecreaseAccuracy, decreasing=TRUE), ]
+
+ggplot(importance_sci_sorted[1:10, ], 
+       aes(y=reorder(rownames(importance_sci_sorted)[1:10], MeanDecreaseAccuracy),
+           x=MeanDecreaseAccuracy)) +
+  geom_bar(stat="identity") +
+  labs(title = "Top 10 Most Important Variables \n [Target: Science grade] \n [Metric: MeanDecreaseAccuracy]",
+       x = "Mean Decrease in Accuracy Across All Classes",
+       y = "Variables")
+```
+
+### EDA
+#### Class Distribution
+```{r}
+eng <- grades$`English/LanguageArts`[grades$`English/LanguageArts` >= 0]
+eng_cnt <- data.frame(table(eng))
+colnames(eng_cnt) <- c("grade", "frequency")
+eng_cnt$grade <- c("A", "B", "C", "D\nor\nLower", "No Grade\nor\nPass/Fail", "N/A\nor\nHome")
+eng_cnt
+
+math <- grades$Math[grades$Math >= 0]
+math_cnt <- data.frame(table(math))
+colnames(math_cnt) <- c("grade", "frequency")
+math_cnt$grade <- c("A", "B", "C", "D\nor\nLower", "No Grade\nor\nPass/Fail", "N/A\nor\nHome")
+math_cnt
+
+hist <- grades$`History/SocialStudies`[grades$`History/SocialStudies` >= 0]
+hist_cnt <- data.frame(table(hist))
+colnames(hist_cnt) <- c("grade", "frequency")
+hist_cnt$grade <- c("A", "B", "C", "D\nor\nLower", "No Grade\nor\nPass/Fail", "N/A\nor\nHome")
+hist_cnt
+
+sci <- grades$Science[grades$Science >= 0]
+sci_cnt = data.frame(table(sci))
+colnames(sci_cnt) <- c("grade", "frequency")
+sci_cnt$grade <- c("A", "B", "C", "D\nor\nLower", "No Grade\nor\nPass/Fail", "N/A\nor\nHome")
+sci_cnt
+```
+
+```{r}
+eng_plot <- ggplot(eng_cnt, aes(x=grade, y=frequency)) + 
+  geom_bar(stat="identity", fill="chocolate1") +
+  labs(title="English/Language Arts") +
+  theme(axis.text.x=element_text(size=10), plot.title=element_text(hjust=0.5))
+
+math_plot <- ggplot(math_cnt, aes(x=grade, y=frequency)) + 
+  geom_bar(stat="identity", fill="aquamarine4") +
+  labs(title="Math") +
+  theme(axis.text.x=element_text(size=10), plot.title=element_text(hjust=0.5))
+
+hist_plot <- ggplot(hist_cnt, aes(x=grade, y=frequency)) + 
+  geom_bar(stat="identity", fill="brown3") +
+  labs(title="History/Social Studies") +
+  theme(axis.text.x=element_text(size=10), plot.title=element_text(hjust=0.5))
+
+sci_plot <- ggplot(sci_cnt, aes(x=grade, y=frequency)) + 
+  geom_bar(stat="identity", fill="darkorchid4") +
+  labs(title="Science") +
+  theme(axis.text.x=element_text(size=10), plot.title=element_text(hjust=0.5))
+
+p = list(eng_plot, math_plot, hist_plot, sci_plot) %>% map(~.x + labs(x=NULL, y=NULL))
+yleft <- textGrob("Frequency", rot=90, hjust=0.3)
+bottom <- textGrob("Grade")
+top <- textGrob("Grade Distribution of Four Subjects", gp=gpar(fontface="bold", fontsize=15), vjust=0.3)
+grid.arrange(grobs=p, nrow=2, ncol=2, left=yleft, bottom=bottom, top=top)
+```
+
+
+
+
+
+
+
+
