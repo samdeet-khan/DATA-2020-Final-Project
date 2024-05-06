@@ -166,7 +166,7 @@ encoded_features <- cbind(grades, encoded_features)
 encoded_features
 ```
 
-### Replace all negative continuous values by 0
+### Replace all negative continuous values by -1
 ```{r}
 encoded_features[, continuous_vars] <- apply(encoded_features[, continuous_vars],
                                              2,
