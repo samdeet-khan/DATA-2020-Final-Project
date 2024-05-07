@@ -1,10 +1,7 @@
-# Load necessary libraries
 library(tidyverse)
 
 # Read the dataset
 data <- read.csv("data/FF_allwaves_2024v1.csv")
-
-# Quick exploration to understand the structure and data types
 str(data)
 summary(data)
 
@@ -29,5 +26,4 @@ ggplot(sociability_vars_long, aes(x = Response, fill = as.factor(Response))) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# Show the plot
 ggsave("sociability_response_distribution.png", width = 12, height = 8)
