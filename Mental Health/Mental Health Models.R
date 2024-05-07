@@ -1,4 +1,3 @@
-# Load necessary libraries
 library(readr)
 library(dplyr)
 library(caret)
